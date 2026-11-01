@@ -1,0 +1,26 @@
+{
+  "name": "rc-controller-configurator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Web configurator for the RC_Controller board (MSP v2 over Web Serial)",
+  "author": "Toximik",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "check": "tsc --noEmit",
+    "probe": "node --experimental-transform-types --no-warnings tools/probe.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "@types/w3c-web-serial": "^1.0.9",
+    "typescript": "~5.9",
+    "vite": "^8.3.5",
+    "vitest": "^4.1.12"
+  }
+}

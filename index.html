@@ -1,0 +1,27 @@
+<!doctype html>
+<!-- \author Toximik -->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RC_Controller Configurator</title>
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>RC_Controller <span>configurator</span></h1>
+      <div class="conn">
+        <span id="conn-state" class="pill">disconnected</span>
+        <label class="showall"><input type="checkbox" id="show-all" /> all ports</label>
+        <button id="connect">Connect</button>
+      </div>
+    </header>
+    <main>
+      <div id="notice" class="notice" hidden></div>
+      <section id="identity" class="card" hidden></section>
+      <section id="status" hidden></section>
+    </main>
+    <footer id="footer"></footer>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>
