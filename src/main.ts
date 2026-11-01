@@ -92,6 +92,7 @@ function setState(next: ConnState): void {
   ui.reboot.hidden = next !== "connected";
   ui.reboot.disabled = boardLocked || rebootTimer !== null;
   ui.showAll.disabled = next !== "disconnected" && next !== "lost";
+  if (next !== "connected") setText(ui.footer, ""); // poll statistics only while polling
   showPages();
 }
 
