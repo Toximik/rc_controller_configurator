@@ -23,6 +23,8 @@ export const MSP = {
   SET_OUTPUTS: 0x4013,
   LIGHTS: 0x4014,
   SET_LIGHTS: 0x4015,
+  LOG_CONFIG: 0x4016,
+  SET_LOG_CONFIG: 0x4017,
 
   SAVE: 0x4020,
   DEFAULTS: 0x4021,
@@ -47,4 +49,4 @@ export const FC_VARIANT = "RCCT";
 /** API major this configurator speaks; a different major is refused at connect */
 export const API_MAJOR = 1;
 /** Highest API minor this configurator knows (newer minors only add messages / appended fields) */
-export const API_MINOR_KNOWN = 1;
+export const API_MINOR_KNOWN = 2;

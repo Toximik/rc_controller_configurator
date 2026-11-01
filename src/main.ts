@@ -3,7 +3,7 @@
  * \file main.ts
  * \brief Configurator app: connect (port picker, identity / API check),
  *        status poll at 10 Hz, disconnect / board loss / auto reconnect,
- *        pages status, outputs and lights (tabs = URL hash).
+ *        pages status, outputs, lights and logger (tabs = URL hash).
  */
 
 import { byId, h, setText } from "./dom.ts";
@@ -16,6 +16,7 @@ import { STATUS_FLAG } from "./msp/payloads.ts";
 import { SerialLink, webSerialSupported } from "./serial.ts";
 import { SaveTracker } from "./ui/area.ts";
 import { LightsView } from "./ui/lights.ts";
+import { LogView } from "./ui/log.ts";
 import { OutputsView } from "./ui/outputs.ts";
 import { StatusView } from "./ui/status.ts";
 
@@ -37,6 +38,7 @@ const ui = {
   status: byId("status"),
   outputs: byId("outputs"),
   lights: byId("lights"),
+  log: byId("log"),
   footer: byId("footer"),
 };
 
@@ -53,10 +55,11 @@ let statusView: StatusView | null = null;
 const saves = new SaveTracker();
 const outputsView = new OutputsView(saves);
 const lightsView = new LightsView(saves);
-const areaViews = [outputsView, lightsView];
+const logView = new LogView(saves);
+const areaViews = [outputsView, lightsView, logView];
 const hasUnsavedWork = () => areaViews.some((v) => v.hasUnsavedWork);
 
-const PAGES = ["status", "outputs", "lights"] as const;
+const PAGES = ["status", "outputs", "lights", "log"] as const;
 type Page = (typeof PAGES)[number];
 
 function currentPage(): Page {
@@ -72,6 +75,7 @@ function showPages(): void {
   ui.status.hidden = !on || page !== "status" || state !== "connected";
   ui.outputs.hidden = !on || page !== "outputs";
   ui.lights.hidden = !on || page !== "lights";
+  ui.log.hidden = !on || page !== "log";
   for (const a of ui.tabs.querySelectorAll<HTMLAnchorElement>("a")) {
     a.toggleAttribute("aria-current", a.hash === `#${page}`);
   }
@@ -267,6 +271,7 @@ async function reboot(): Promise<void> {
 function init(): void {
   ui.outputs.replaceChildren(outputsView.root);
   ui.lights.replaceChildren(lightsView.root);
+  ui.log.replaceChildren(logView.root);
   window.addEventListener("hashchange", showPages);
   window.addEventListener("beforeunload", (event) => {
     if (hasUnsavedWork()) event.preventDefault();

@@ -82,6 +82,7 @@ export const STATUS_FLAG = {
   SAVING: 0x0020,
   LOCKED: 0x0040,
   LIGHTS_REPAIRED: 0x0080,
+  LOG_REPAIRED: 0x0100,
 } as const;
 
 export const SETTINGS_STATES = ["no EDATA", "skipped", "defaults", "loaded"] as const;

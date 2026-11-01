@@ -5,7 +5,7 @@
  *        against the board from Node, without a browser (macOS / Linux tty).
  *
  * usage: npm run probe -- /dev/cu.usbmodem1101 [seconds]
- *        npm run probe -- /dev/cu.usbmodem1101 outputs|lights
+ *        npm run probe -- /dev/cu.usbmodem1101 outputs|lights|log
  *
  * "outputs": OUTPUTS area through the configurator's encoder / decoder:
  * read, write back unchanged, change OUT9 only when it has no source (no
@@ -25,13 +25,14 @@ import { armBlockNames, decodeBattery, decodeOutputsLive, decodeRc, decodeStatus
 import { MspErrorReply } from "../src/msp/client.ts";
 import { cloneOutputs, decodeOutputs, encodeOutputs, sameOutputs, validateOutputs, FAILSAFE_NAMES } from "../src/msp/outputs.ts";
 import { cloneLights, decodeLights, encodeLights, FN, functionNames, LIGHT_MODES, sameLights, validateLights } from "../src/msp/lights.ts";
+import { cloneLog, decodeLog, encodeLog, sameLog, validateLog } from "../src/msp/log.ts";
 import { API_MINOR_KNOWN, MSP } from "../src/msp/protocol.ts";
 
 const path = process.argv[2];
-const mode = process.argv[3] === "outputs" || process.argv[3] === "lights" ? process.argv[3] : "poll";
+const mode = process.argv[3] === "outputs" || process.argv[3] === "lights" || process.argv[3] === "log" ? process.argv[3] : "poll";
 const seconds = Number(mode === "poll" ? (process.argv[3] ?? "3") : "0");
 if (!path) {
-  console.log("usage: npm run probe -- /dev/cu.usbmodemXXXX [seconds | outputs | lights]");
+  console.log("usage: npm run probe -- /dev/cu.usbmodemXXXX [seconds | outputs | lights | log]");
   process.exit(1);
 }
 
@@ -142,6 +143,39 @@ if (mode === "lights") {
     check("original restored", sameLights(await read(), original));
   }
   console.log(ok ? "lights: all checks passed" : "lights: FAILED");
+  stream.destroy();
+  process.exit(ok ? 0 : 1);
+}
+
+if (mode === "log") {
+  // Codec check only: nothing is saved, the original is written back
+  let ok = true;
+  const check = (what: string, pass: boolean) => {
+    ok &&= pass;
+    console.log(`${pass ? "ok  " : "FAIL"} ${what}`);
+  };
+  const read = async () => decodeLog(await client.request(MSP.LOG_CONFIG));
+  const original = await read();
+  console.log(`  log switch channel ${original.switchChannel ? `CH${original.switchChannel}` : "none"}`);
+  check("board config passes the configurator's validation", validateLog(original).length === 0);
+  try {
+    await client.request(MSP.SET_LOG_CONFIG, encodeLog(original));
+    check("write back unchanged accepted", sameLog(await read(), original));
+
+    const invalid = cloneLog(original);
+    invalid.switchChannel = 17;
+    const before = await read();
+    const code = await client.request(MSP.SET_LOG_CONFIG, encodeLog(invalid)).then(
+      () => 0,
+      (e: unknown) => (e instanceof MspErrorReply ? e.code : -1),
+    );
+    check(`invalid (channel 17) refused with error 3 (got ${code})`, code === 3);
+    check("refused write left the board unchanged", sameLog(await read(), before));
+  } finally {
+    await client.request(MSP.SET_LOG_CONFIG, encodeLog(original));
+    check("original restored", sameLog(await read(), original));
+  }
+  console.log(ok ? "log: all checks passed" : "log: FAILED");
   stream.destroy();
   process.exit(ok ? 0 : 1);
 }
