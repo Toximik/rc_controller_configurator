@@ -200,6 +200,48 @@ export class MspReader {
   }
 }
 
+/** Little-endian payload writer (grows as needed); values out of range throw (encoder bug, not user input) */
+export class MspWriter {
+  private buf = new Uint8Array(64);
+  private len = 0;
+
+  get length(): number {
+    return this.len;
+  }
+
+  private put(n: number, value: number, min: number, max: number): void {
+    if (!Number.isInteger(value) || value < min || value > max) {
+      throw new RangeError(`MSP field value ${value} outside ${min}..${max}`);
+    }
+    if (this.len + n > this.buf.length) {
+      const next = new Uint8Array(Math.max(this.buf.length * 2, this.len + n));
+      next.set(this.buf);
+      this.buf = next;
+    }
+    for (let i = 0; i < n; i++) {
+      this.buf[this.len++] = (value >>> (8 * i)) & 0xff;
+    }
+  }
+
+  u8(value: number): this {
+    this.put(1, value, 0, 0xff);
+    return this;
+  }
+  u16(value: number): this {
+    this.put(2, value, 0, 0xffff);
+    return this;
+  }
+  u32(value: number): this {
+    this.put(4, value, 0, 0xffffffff);
+    return this;
+  }
+
+  /** Copy of the written bytes */
+  bytes(): Uint8Array {
+    return this.buf.slice(0, this.len);
+  }
+}
+
 function ascii(bytes: Uint8Array): string {
   return String.fromCharCode(...bytes);
 }

@@ -5,6 +5,12 @@
  *        against the board from Node, without a browser (macOS / Linux tty).
  *
  * usage: npm run probe -- /dev/cu.usbmodem1101 [seconds]
+ *        npm run probe -- /dev/cu.usbmodem1101 outputs
+ *
+ * "outputs": OUTPUTS area through the configurator's encoder / decoder:
+ * read, write back unchanged, change OUT9 only when it has no source (no
+ * pulses – nothing moves), invalid write refused + unchanged, original
+ * restored. Nothing is saved.
  */
 
 import { execFileSync } from "node:child_process";
@@ -13,12 +19,15 @@ import { ReadStream } from "node:tty";
 import { MspClient } from "../src/msp/client.ts";
 import { readIdentity } from "../src/msp/identity.ts";
 import { armBlockNames, decodeBattery, decodeOutputsLive, decodeRc, decodeStatus, OUTPUT_STATES } from "../src/msp/payloads.ts";
+import { MspErrorReply } from "../src/msp/client.ts";
+import { cloneOutputs, decodeOutputs, encodeOutputs, sameOutputs, validateOutputs, FAILSAFE_NAMES } from "../src/msp/outputs.ts";
 import { API_MINOR_KNOWN, MSP } from "../src/msp/protocol.ts";
 
 const path = process.argv[2];
-const seconds = Number(process.argv[3] ?? "3");
+const mode = process.argv[3] === "outputs" ? "outputs" : "poll";
+const seconds = Number(mode === "poll" ? (process.argv[3] ?? "3") : "0");
 if (!path) {
-  console.log("usage: npm run probe -- /dev/cu.usbmodemXXXX [seconds]");
+  console.log("usage: npm run probe -- /dev/cu.usbmodemXXXX [seconds | outputs]");
   process.exit(1);
 }
 
@@ -37,6 +46,54 @@ stream.on("data", (chunk) => client.receive(chunk as Buffer));
 await new Promise((r) => setTimeout(r, 300)); // banner
 const id = await readIdentity(client, API_MINOR_KNOWN);
 console.log(`connected: ${id.variant} firmware ${id.firmware}, API ${id.api.major}.${id.api.minor}, ${id.board.boardName}, UID ${id.board.uid}, built ${id.build.date} ${id.build.time}`);
+
+if (mode === "outputs") {
+  let ok = true;
+  const check = (what: string, pass: boolean) => {
+    ok &&= pass;
+    console.log(`${pass ? "ok  " : "FAIL"} ${what}`);
+  };
+  const read = async () => decodeOutputs(await client.request(MSP.OUTPUTS));
+  const original = await read();
+  for (const [i, o] of original.outputs.entries()) {
+    console.log(
+      `  OUT${i + 1}: ${o.source ? `CH${o.source}` : "none"}${o.reverse ? " rev" : ""} ${o.minUs}/${o.centerUs}/${o.maxUs} us, loss ${FAILSAFE_NAMES[o.failsafe]}${o.failsafe === 1 ? ` ${o.failsafeUs}` : ""}`,
+    );
+  }
+  console.log(`  rates ${original.ratesHz.join("/")} Hz, arm CH${original.armChannel}, ESC OUT${original.escOutput}`);
+  check("board config passes the configurator's validation", validateOutputs(original).length === 0);
+  try {
+    await client.request(MSP.SET_OUTPUTS, encodeOutputs(original));
+    check("write back unchanged accepted", sameOutputs(await read(), original));
+
+    const out9 = original.outputs[8]!;
+    if (out9.source === 0) {
+      const changed = cloneOutputs(original);
+      const o = changed.outputs[8]!;
+      Object.assign(o, { reverse: !o.reverse, failsafe: (o.failsafe + 1) % 3, minUs: o.minUs - 1, centerUs: o.centerUs + 1, maxUs: o.maxUs + 1, failsafeUs: o.failsafeUs + 3 });
+      await client.request(MSP.SET_OUTPUTS, encodeOutputs(changed));
+      check("OUT9 (no source) edit written and read back", sameOutputs(await read(), changed));
+    } else {
+      console.log("skip OUT9 edit: OUT9 has a source");
+    }
+
+    const invalid = cloneOutputs(original);
+    invalid.outputs[8]!.minUs = invalid.outputs[8]!.centerUs + 1;
+    const before = await read();
+    const code = await client.request(MSP.SET_OUTPUTS, encodeOutputs(invalid)).then(
+      () => 0,
+      (e: unknown) => (e instanceof MspErrorReply ? e.code : -1),
+    );
+    check(`invalid (OUT9 min > center) refused with error 3 (got ${code})`, code === 3);
+    check("refused write left the board unchanged", sameOutputs(await read(), before));
+  } finally {
+    await client.request(MSP.SET_OUTPUTS, encodeOutputs(original));
+    check("original restored", sameOutputs(await read(), original));
+  }
+  console.log(ok ? "outputs: all checks passed" : "outputs: FAILED");
+  stream.destroy();
+  process.exit(ok ? 0 : 1);
+}
 
 const end = Date.now() + seconds * 1000;
 let polls = 0;

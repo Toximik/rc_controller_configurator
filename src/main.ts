@@ -2,7 +2,8 @@
  * \author Toximik
  * \file main.ts
  * \brief Configurator app: connect (port picker, identity / API check),
- *        status poll at 10 Hz, disconnect / board loss / auto reconnect.
+ *        status poll at 10 Hz, disconnect / board loss / auto reconnect,
+ *        pages status and outputs (tabs = URL hash).
  */
 
 import { byId, h, setText } from "./dom.ts";
@@ -11,6 +12,7 @@ import { IncompatibleBoard, readIdentity, type Identity } from "./msp/identity.t
 import { decodeBattery, decodeOutputsLive, decodeRc, decodeStatus } from "./msp/payloads.ts";
 import { API_MINOR_KNOWN, MSP } from "./msp/protocol.ts";
 import { SerialLink, webSerialSupported } from "./serial.ts";
+import { OutputsView } from "./ui/outputs.ts";
 import { StatusView } from "./ui/status.ts";
 
 /** Status poll period [ms] (PHASE2_MSP_PLAN.md section 6: ~10 Hz) */
@@ -26,7 +28,9 @@ const ui = {
   showAll: byId<HTMLInputElement>("show-all"),
   notice: byId("notice"),
   identity: byId("identity"),
+  tabs: byId("tabs"),
   status: byId("status"),
+  outputs: byId("outputs"),
   footer: byId("footer"),
 };
 
@@ -36,6 +40,27 @@ let client: MspClient | null = null;
 let session = 0; // incremented on every connect / disconnect: stale loops stop
 let lastPortInfo: SerialPortInfo | null = null;
 let statusView: StatusView | null = null;
+const outputsView = new OutputsView();
+
+const PAGES = ["status", "outputs"] as const;
+type Page = (typeof PAGES)[number];
+
+function currentPage(): Page {
+  const p = location.hash.slice(1);
+  return (PAGES as readonly string[]).includes(p) ? (p as Page) : "status";
+}
+
+/** Tabs and pages visible only while connected (outputs also while lost: edits stay visible) */
+function showPages(): void {
+  const page = currentPage();
+  const on = state === "connected" || (state === "lost" && outputsView.hasUnsavedWork);
+  ui.tabs.hidden = !on;
+  ui.status.hidden = !on || page !== "status" || state !== "connected";
+  ui.outputs.hidden = !on || page !== "outputs";
+  for (const a of ui.tabs.querySelectorAll<HTMLAnchorElement>("a")) {
+    a.toggleAttribute("aria-current", a.hash === `#${page}`);
+  }
+}
 
 function setState(next: ConnState): void {
   state = next;
@@ -44,6 +69,7 @@ function setState(next: ConnState): void {
   ui.connect.textContent = next === "connected" || next === "connecting" ? "Disconnect" : "Connect";
   ui.connect.disabled = next === "connecting";
   ui.showAll.disabled = next !== "disconnected" && next !== "lost";
+  showPages();
 }
 
 function notice(text: string, tone: "info" | "warn" | "bad" = "info"): void {
@@ -90,7 +116,8 @@ async function connect(port: SerialPort): Promise<void> {
     setState("connected");
     statusView ??= new StatusView();
     ui.status.replaceChildren(statusView.root);
-    ui.status.hidden = false;
+    outputsView.attach(client);
+    showPages();
     void pollLoop(my, client);
   } catch (error) {
     if (my !== session) return;
@@ -104,6 +131,7 @@ async function connect(port: SerialPort): Promise<void> {
 
 async function disconnect(): Promise<void> {
   session++;
+  outputsView.detach();
   client?.close();
   client = null;
   const l = link;
@@ -115,6 +143,7 @@ async function disconnect(): Promise<void> {
 function lost(my: number, reason: string): void {
   if (my !== session) return;
   session++;
+  outputsView.detach();
   client?.close(reason);
   client = null;
   void link?.close();
@@ -140,6 +169,7 @@ async function pollLoop(my: number, c: MspClient): Promise<void> {
       };
       if (my !== session) return;
       statusView?.update(sample);
+      outputsView.update(sample, t0);
       if (failures >= POLL_FAIL_LIMIT) notice("");
       failures = 0;
       polls++;
@@ -172,6 +202,11 @@ function samePort(info: SerialPortInfo, ref: SerialPortInfo | null): boolean {
 }
 
 function init(): void {
+  ui.outputs.replaceChildren(outputsView.root);
+  window.addEventListener("hashchange", showPages);
+  window.addEventListener("beforeunload", (event) => {
+    if (outputsView.hasUnsavedWork) event.preventDefault();
+  });
   setState("disconnected");
   if (!webSerialSupported()) {
     ui.connect.disabled = true;
