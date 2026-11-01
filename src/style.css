@@ -206,7 +206,7 @@ fieldset.plain { border: 0; padding: 0; margin: 0; min-width: 0; }
 .problems { flex-basis: 100%; margin: 0; padding-left: 18px; color: var(--bad); font-size: 13px; }
 .problems:empty { display: none; }
 .hint { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
-.card > .hint:first-of-type { margin: 0 0 10px; }
+.card > h2 + .hint { margin: 0 0 10px; }
 
 input[type="number"], select {
   font: inherit;
@@ -262,3 +262,5 @@ footer {
 .live-val { color: var(--muted); font-variant-numeric: tabular-nums; }
 .live-val[data-tone="warn"] { color: var(--warn); }
 .lights-page > .notice, .lights-page fieldset > .notice { margin-bottom: 16px; }
+.grid.grid-roomy { grid-template-columns: repeat(auto-fill, minmax(min(440px, 100%), 1fr)); }
+.fields.form dd { display: flex; align-items: center; gap: 6px; white-space: nowrap; }

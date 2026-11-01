@@ -154,8 +154,8 @@ export class LightsView extends AreaView<LightsConfig, LightsField> {
     const inputKind = this.select(
       "flag.MODE_BUTTON",
       [
-        [0, "switch (position = mode)"],
-        [1, "momentary button"],
+        [0, "switch"],
+        [1, "button"],
       ],
       (c) => (bit(c.flags, LIGHT_FLAG.MODE_BUTTON) ? 1 : 0),
       (c, v) => (c.flags = withBit(c.flags, LIGHT_FLAG.MODE_BUTTON, v === 1)),
@@ -181,7 +181,7 @@ export class LightsView extends AreaView<LightsConfig, LightsField> {
       this.live_.test,
       h(
         "div",
-        { class: "grid" },
+        { class: "grid grid-roomy" },
         h(
           "section",
           { class: "card wide" },
@@ -221,7 +221,7 @@ export class LightsView extends AreaView<LightsConfig, LightsField> {
           h(
             "p",
             { class: "hint" },
-            "Switch: the positions are spread over 1000–2000 µs (nearest wins), position n = mode n. " +
+            "Kind switch: the positions are spread over 1000–2000 µs (nearest wins), position n = mode n. " +
               "Button (pressed > 1700 µs): short press = next mode, long press (1 s) = mode 1 + hazard off, double press = hazard on / off (then a short press acts 0.4 s after the release). " +
               "No channel = mode 1. The mode is kept in RAM only (after a reset: mode 1).",
           ),
@@ -238,15 +238,15 @@ export class LightsView extends AreaView<LightsConfig, LightsField> {
             ...row("Turn signal beyond", steerUs, unit("µs")),
             ...row("Steering now", this.live_.steerUs),
             ...row("Throttle reversed", flag("THROTTLE_REVERSE", "Forward = throttle channel below 1500 µs")),
-            ...row("Direct reverse (crawler ESC)", flag("DIRECT_REVERSE", "Stick back = reverse at once, no brake step")),
-            ...row("Throttle dead band", h("span", {}, "± "), deadband, unit("µs")),
+            ...row("Direct reverse", flag("DIRECT_REVERSE", "Stick back = reverse at once, no brake step")),
+            ...row("Throttle dead band", h("span", { class: "unit" }, "±"), deadband, unit("µs")),
             ...row("Drive state", this.live_.drive),
             ...row("Hazard", this.live_.hazard),
           ),
           h(
             "p",
             { class: "hint" },
-            "Throttle = source channel of the ESC output (Outputs page), counted only while armed. Turn signals only while standing (neutral / braking), off below 3/4 of the threshold. " +
+            "Throttle = source channel of the ESC output (Outputs page), counted only while armed (disarmed: drive state stays neutral). Direct reverse = crawler / forward-reverse ESC. Turn signals only while standing (neutral / braking), off below 3/4 of the threshold. " +
               "Without direct reverse: stick back after forward = brake, back to neutral and back again = reverse. RC loss / failsafe: hazard + brake in any mode.",
           ),
         ),
@@ -272,7 +272,7 @@ export class LightsView extends AreaView<LightsConfig, LightsField> {
     setText(this.live_.modeUs, chan(c?.modeChannel ?? 0));
     setText(this.live_.mode, `mode ${live.lightMode + 1}${live.lightTest ? " (bench test)" : ""}`);
     setText(this.live_.steerUs, chan(c?.steerChannel ?? 0));
-    setText(this.live_.drive, `${DRIVE_STATES[live.drive] ?? String(live.drive)}${sample.status.outputState === 2 ? "" : " (disarmed: throttle ignored)"}`);
+    setText(this.live_.drive, `${DRIVE_STATES[live.drive] ?? String(live.drive)}${sample.status.outputState === 2 ? "" : " · disarmed"}`);
     setText(this.live_.hazard, live.hazardOn ? (live.hazardByButton ? "on (button)" : "on") : "off");
     this.live_.hazard.dataset["tone"] = live.hazardOn ? "warn" : "";
   }
