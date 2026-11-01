@@ -9,8 +9,10 @@
 import { byId, h, setText } from "./dom.ts";
 import { MspClient, MspTimeout } from "./msp/client.ts";
 import { IncompatibleBoard, readIdentity, type Identity } from "./msp/identity.ts";
+import { MspErrorReply } from "./msp/client.ts";
 import { decodeBattery, decodeOutputsLive, decodeRc, decodeStatus } from "./msp/payloads.ts";
 import { API_MINOR_KNOWN, MSP } from "./msp/protocol.ts";
+import { STATUS_FLAG } from "./msp/payloads.ts";
 import { SerialLink, webSerialSupported } from "./serial.ts";
 import { OutputsView } from "./ui/outputs.ts";
 import { StatusView } from "./ui/status.ts";
@@ -25,6 +27,7 @@ type ConnState = "disconnected" | "connecting" | "connected" | "lost";
 const ui = {
   state: byId("conn-state"),
   connect: byId<HTMLButtonElement>("connect"),
+  reboot: byId<HTMLButtonElement>("reboot"),
   showAll: byId<HTMLInputElement>("show-all"),
   notice: byId("notice"),
   identity: byId("identity"),
@@ -39,6 +42,10 @@ let link: SerialLink | null = null;
 let client: MspClient | null = null;
 let session = 0; // incremented on every connect / disconnect: stale loops stop
 let lastPortInfo: SerialPortInfo | null = null;
+/** Set when the board accepted REBOOT: the following USB loss is expected */
+let rebootTimer: ReturnType<typeof setTimeout> | null = null;
+/** Board writes refused (armed): from the status poll */
+let boardLocked = false;
 let statusView: StatusView | null = null;
 const outputsView = new OutputsView();
 
@@ -68,6 +75,8 @@ function setState(next: ConnState): void {
   ui.state.dataset["state"] = next;
   ui.connect.textContent = next === "connected" || next === "connecting" ? "Disconnect" : "Connect";
   ui.connect.disabled = next === "connecting";
+  ui.reboot.hidden = next !== "connected";
+  ui.reboot.disabled = boardLocked || rebootTimer !== null;
   ui.showAll.disabled = next !== "disconnected" && next !== "lost";
   showPages();
 }
@@ -112,6 +121,11 @@ async function connect(port: SerialPort): Promise<void> {
     lastPortInfo = port.getInfo();
     const id = await readIdentity(client, API_MINOR_KNOWN);
     if (my !== session) return;
+    if (rebootTimer !== null) {
+      clearTimeout(rebootTimer);
+      rebootTimer = null;
+      notice("Board rebooted and reconnected.", "info");
+    }
     showIdentity(id);
     setState("connected");
     statusView ??= new StatusView();
@@ -131,6 +145,8 @@ async function connect(port: SerialPort): Promise<void> {
 
 async function disconnect(): Promise<void> {
   session++;
+  if (rebootTimer !== null) clearTimeout(rebootTimer);
+  rebootTimer = null;
   outputsView.detach();
   client?.close();
   client = null;
@@ -149,7 +165,11 @@ function lost(my: number, reason: string): void {
   void link?.close();
   link = null;
   setState("lost");
-  notice(`Connection lost (${reason}). Reconnects automatically when the board comes back (reboot, replug).`, "warn");
+  if (rebootTimer !== null) {
+    notice("Board rebooting – reconnects automatically…", "info");
+  } else {
+    notice(`Connection lost (${reason}). Reconnects automatically when the board comes back (reboot, replug).`, "warn");
+  }
 }
 
 async function pollLoop(my: number, c: MspClient): Promise<void> {
@@ -168,6 +188,12 @@ async function pollLoop(my: number, c: MspClient): Promise<void> {
         live: decodeOutputsLive(await l!),
       };
       if (my !== session) return;
+      const locked = (sample.status.flags & STATUS_FLAG.LOCKED) !== 0 || sample.status.outputState === 2;
+      if (locked !== boardLocked) {
+        boardLocked = locked;
+        ui.reboot.disabled = locked || rebootTimer !== null;
+        ui.reboot.title = locked ? "Armed – the board refuses a reboot" : "Restart the board (refused while armed or saving)";
+      }
       statusView?.update(sample);
       outputsView.update(sample, t0);
       if (failures >= POLL_FAIL_LIMIT) notice("");
@@ -201,6 +227,32 @@ function samePort(info: SerialPortInfo, ref: SerialPortInfo | null): boolean {
   return !!ref && info.usbVendorId === ref.usbVendorId && info.usbProductId === ref.usbProductId;
 }
 
+async function reboot(): Promise<void> {
+  const c = client;
+  if (!c) return;
+  const unsaved = outputsView.hasUnsavedWork
+    ? "\n\nValues written but not saved (or edits not written) are lost – the board starts with its saved settings."
+    : "";
+  if (!confirm(`Reboot the board?${unsaved}`)) return;
+  ui.reboot.disabled = true;
+  try {
+    await c.request(MSP.REBOOT);
+    // The board resets ~50 ms after the reply; the USB loss + reconnect follow by themselves.
+    // It cancels the reset if it got armed or a save started meanwhile.
+    rebootTimer = setTimeout(() => {
+      rebootTimer = null;
+      ui.reboot.disabled = boardLocked;
+      if (state === "connected") notice("The board did not reboot (cancelled: armed or a save started meanwhile).", "warn");
+      else if (state === "lost") notice("The board did not come back within 10 s after the reboot – check USB / power.", "bad");
+    }, 10_000);
+    notice("Rebooting…", "info");
+  } catch (error) {
+    ui.reboot.disabled = boardLocked;
+    const msg = error instanceof MspErrorReply ? `board refused: ${error.message.replace(/^0x[0-9a-f]+: /, "")}` : (error as Error).message;
+    notice(`Reboot failed: ${msg}`, "bad");
+  }
+}
+
 function init(): void {
   ui.outputs.replaceChildren(outputsView.root);
   window.addEventListener("hashchange", showPages);
@@ -219,6 +271,7 @@ function init(): void {
     return;
   }
 
+  ui.reboot.addEventListener("click", () => void reboot());
   ui.connect.addEventListener("click", async () => {
     if (state === "connected" || state === "connecting") {
       await disconnect();

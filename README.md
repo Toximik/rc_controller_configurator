@@ -23,7 +23,9 @@ On connect the configurator checks the firmware variant (`RCCT`) and the API maj
 works (only appended fields / new messages). Then STATUS, RC, BATTERY and OUTPUTS_LIVE are polled together at
 10 Hz (one write, answered in one firmware task run). After a reboot or replug it reconnects by itself.
 
-Pages are tabs (URL hash `#status`, `#outputs`).
+Pages are tabs (URL hash `#status`, `#outputs`). **Reboot** (top bar, while connected) sends `REBOOT` after a
+confirmation (warns about written but unsaved values); the board refuses it while armed (button disabled) or
+saving, resets ~50 ms after the reply and the page reconnects by itself.
 
 **Outputs:** the whole `OUTPUTS_CONFIG` area – per output source channel, reverse, min / center / max, RC loss
 behaviour (hold / fixed value / no pulses); arm switch channel, ESC output, frame rate per timer. Edits are
