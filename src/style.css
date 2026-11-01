@@ -136,10 +136,16 @@ main { padding: 16px; max-width: 1200px; margin: 0 auto; }
 .blocks { list-style: none; padding: 0; margin: 8px 0 12px; }
 .blocks li { padding: 1px 0; }
 
+/* Column-major: CH1-8 in the first column, CH9-16 in the second; one column on narrow screens */
 .bars {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-auto-flow: column;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(8, auto);
   gap: 6px 24px;
+}
+@media (max-width: 600px) {
+  .bars { grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(16, auto); }
 }
 .bar { display: grid; grid-template-columns: 40px 1fr 44px; gap: 8px; align-items: center; }
 .bar .lbl, .pulse .lbl { color: var(--muted); font-size: 12px; }
