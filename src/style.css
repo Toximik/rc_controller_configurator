@@ -172,6 +172,9 @@ main { padding: 16px; max-width: 1200px; margin: 0 auto; }
 .light[data-on="1"] { background: var(--warn); border-color: var(--warn); color: #fff; }
 
 /* Tabs (URL hash) */
+/* The hidden attribute wins over display rules of classes (.tabs is flex) */
+[hidden] { display: none !important; }
+
 .tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
 .tabs a {
   padding: 8px 16px;
@@ -280,3 +283,8 @@ button.danger { color: var(--bad); border-color: var(--bad); }
 .logs-progress .msg[data-tone="ok"] { color: var(--ok); }
 .logs-progress .msg[data-tone="warn"] { color: var(--warn); }
 .logs-progress .msg[data-tone="bad"] { color: var(--bad); font-weight: 400; }
+
+/* Start screen (disconnected) */
+.welcome { max-width: 560px; margin: 40px auto; }
+.welcome p { margin: 0 0 8px; }
+.welcome code { font-size: 12px; }

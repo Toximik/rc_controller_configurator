@@ -33,6 +33,7 @@ const ui = {
   reboot: byId<HTMLButtonElement>("reboot"),
   showAll: byId<HTMLInputElement>("show-all"),
   notice: byId("notice"),
+  welcome: byId("welcome"),
   identity: byId("identity"),
   tabs: byId("tabs"),
   status: byId("status"),
@@ -72,6 +73,7 @@ function showPages(): void {
   const page = currentPage();
   const on = state === "connected" || (state === "lost" && hasUnsavedWork());
   ui.tabs.hidden = !on;
+  ui.welcome.hidden = state !== "disconnected";
   ui.status.hidden = !on || page !== "status" || state !== "connected";
   ui.outputs.hidden = !on || page !== "outputs";
   ui.lights.hidden = !on || page !== "lights";
@@ -166,6 +168,7 @@ async function disconnect(): Promise<void> {
   const l = link;
   link = null;
   await l?.close();
+  ui.identity.hidden = true; // stale board data must not stay on the start screen
   setState("disconnected");
 }
 
