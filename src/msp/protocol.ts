@@ -29,6 +29,12 @@ export const MSP = {
   SAVE: 0x4020,
   DEFAULTS: 0x4021,
   REBOOT: 0x4022,
+
+  LOG_INFO: 0x4030,
+  LOG_LIST: 0x4031,
+  LOG_READ: 0x4032,
+  LOG_ERASE: 0x4033,
+  LOG_CONTROL: 0x4034,
 } as const;
 
 /** Payload byte of an error reply ("$X!") */
@@ -37,7 +43,7 @@ export const MSP_ERRORS: Record<number, string> = {
   2: "bad length",
   3: "invalid value",
   4: "locked (armed)",
-  5: "busy (save running)",
+  5: "busy (save running / logger not idle)",
   6: "no settings storage",
   7: "settings area version not supported",
   8: "internal firmware error",
@@ -49,4 +55,6 @@ export const FC_VARIANT = "RCCT";
 /** API major this configurator speaks; a different major is refused at connect */
 export const API_MAJOR = 1;
 /** Highest API minor this configurator knows (newer minors only add messages / appended fields) */
-export const API_MINOR_KNOWN = 2;
+export const API_MINOR_KNOWN = 3;
+/** First API minor with the log download (LOG_INFO .. LOG_CONTROL) */
+export const API_MINOR_LOG_DOWNLOAD = 3;

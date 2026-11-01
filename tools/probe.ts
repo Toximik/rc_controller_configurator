@@ -14,10 +14,14 @@
  *
  * "lights": LIGHTS area the same way; the edit changes only a spare mode
  * (beyond the modes in use) and the turn signal threshold (armed only).
+ *
+ * "logs [n] [out.zip]": logger info + session list, downloads session n
+ * (default: the last) through the configurator's download + decoder, writes
+ * the CSV zip as the Logs page does (default /tmp/session_<n>.zip). Read only.
  */
 
 import { execFileSync } from "node:child_process";
-import { constants, openSync, write } from "node:fs";
+import { constants, openSync, write, writeFileSync } from "node:fs";
 import { ReadStream } from "node:tty";
 import { MspClient } from "../src/msp/client.ts";
 import { readIdentity } from "../src/msp/identity.ts";
@@ -27,12 +31,15 @@ import { cloneOutputs, decodeOutputs, encodeOutputs, sameOutputs, validateOutput
 import { cloneLights, decodeLights, encodeLights, FN, functionNames, LIGHT_MODES, sameLights, validateLights } from "../src/msp/lights.ts";
 import { cloneLog, decodeLog, encodeLog, sameLog, validateLog } from "../src/msp/log.ts";
 import { API_MINOR_KNOWN, MSP } from "../src/msp/protocol.ts";
+import { decodeSession } from "../src/msp/logformat.ts";
+import { downloadSession, LOGGER_STATES, readLogInfo, readLogSessions, sessionPages, sessionSeconds } from "../src/msp/logs.ts";
+import { makeZip } from "../src/zip.ts";
 
 const path = process.argv[2];
-const mode = process.argv[3] === "outputs" || process.argv[3] === "lights" || process.argv[3] === "log" ? process.argv[3] : "poll";
+const mode = ["outputs", "lights", "log", "logs"].includes(process.argv[3] ?? "") ? process.argv[3]! : "poll";
 const seconds = Number(mode === "poll" ? (process.argv[3] ?? "3") : "0");
 if (!path) {
-  console.log("usage: npm run probe -- /dev/cu.usbmodemXXXX [seconds | outputs | lights | log]");
+  console.log("usage: npm run probe -- /dev/cu.usbmodemXXXX [seconds | outputs | lights | log | logs [n] [out.zip]]");
   process.exit(1);
 }
 
@@ -51,6 +58,39 @@ stream.on("data", (chunk) => client.receive(chunk as Buffer));
 await new Promise((r) => setTimeout(r, 300)); // banner
 const id = await readIdentity(client, API_MINOR_KNOWN);
 console.log(`connected: ${id.variant} firmware ${id.firmware}, API ${id.api.major}.${id.api.minor}, ${id.board.boardName}, UID ${id.board.uid}, built ${id.build.date} ${id.build.time}`);
+
+if (mode === "logs") {
+  const info = await readLogInfo(client);
+  console.log(`logger ${LOGGER_STATES[info.state]}, ${info.sessions} sessions, free ${info.freeBlocks} blocks, log switch CH${info.switchChannel}`);
+  const sessions = await readLogSessions(client);
+  for (const s of sessions) {
+    console.log(`  session ${s.number}: ${sessionPages(s)} pages, ${sessionSeconds(s).toFixed(1)} s${s.closed ? "" : ", not closed"}`);
+  }
+  const wanted = process.argv[4] ? Number(process.argv[4]) : sessions.at(-1)?.number;
+  const s = sessions.find((x) => x.number === wanted);
+  if (!s) {
+    console.log(`session ${wanted} not on the chip`);
+    process.exit(1);
+  }
+  let last = 0;
+  const r = await downloadSession(client, s, (p) => {
+    if (performance.now() - last > 1000) {
+      last = performance.now();
+      console.log(`  ${p.done} / ${p.total} pages, ${(p.bytesPerS / 1024).toFixed(0)} KB/s`);
+    }
+  });
+  console.log(`session ${s.number}: ${r.pages} pages in ${r.seconds.toFixed(1)} s = ${((r.pages * 2048) / 1024 / r.seconds).toFixed(0)} KB/s, not received ${r.missing}, read errors ${r.readErrors}`);
+  const d = decodeSession(r.data);
+  process.stdout.write(d.summary);
+  const enc = new TextEncoder();
+  const files = [{ name: `session_${s.number}/summary.txt`, data: enc.encode(d.summary) }];
+  for (const [name, text] of d.csv) files.push({ name: `session_${s.number}/${name}.csv`, data: enc.encode(text) });
+  const out = process.argv[5] ?? `/tmp/session_${s.number}.zip`;
+  writeFileSync(out, makeZip(files));
+  console.log(`zip: ${out}`);
+  stream.destroy();
+  process.exit(r.missing || r.readErrors ? 1 : 0);
+}
 
 if (mode === "outputs") {
   let ok = true;

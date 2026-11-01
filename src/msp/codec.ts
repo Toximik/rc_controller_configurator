@@ -13,6 +13,8 @@
 
 /** Largest payload the firmware accepts / sends (PHASE2_MSP_PLAN.md section 2) */
 export const MSP_MAX_PAYLOAD = 256;
+/** Largest reply payload accepted: LOG_READ carries a 2048 B NAND page (2057 B, PHASE3_LOGGER_PLAN.md section 11) */
+export const MSP_MAX_REPLY_PAYLOAD = 4096;
 
 /** Header '$' 'X' type flag id(2) size(2) */
 const HEADER_SIZE = 8;
@@ -26,12 +28,21 @@ export interface MspFrame {
   payload: Uint8Array;
 }
 
-export function crc8DvbS2(data: ArrayLike<number>, start = 0, end = data.length, crc = 0): number {
-  for (let i = start; i < end; i++) {
-    crc ^= data[i]!;
+const CRC8_TABLE = (() => {
+  const t = new Uint8Array(256);
+  for (let v = 0; v < 256; v++) {
+    let crc = v;
     for (let bit = 0; bit < 8; bit++) {
       crc = crc & 0x80 ? ((crc << 1) ^ 0xd5) & 0xff : (crc << 1) & 0xff;
     }
+    t[v] = crc;
+  }
+  return t;
+})();
+
+export function crc8DvbS2(data: ArrayLike<number>, start = 0, end = data.length, crc = 0): number {
+  for (let i = start; i < end; i++) {
+    crc = CRC8_TABLE[crc ^ data[i]!]!;
   }
   return crc;
 }
@@ -100,7 +111,7 @@ export class MspStreamParser {
       }
       const type = String.fromCharCode(joined[pos + 2]!);
       const size = joined[pos + 6]! | (joined[pos + 7]! << 8);
-      if ((type !== ">" && type !== "!" && type !== "<") || size > MSP_MAX_PAYLOAD) {
+      if ((type !== ">" && type !== "!" && type !== "<") || size > MSP_MAX_REPLY_PAYLOAD) {
         this.counters.syntaxErrors++;
         pos++;
         continue;

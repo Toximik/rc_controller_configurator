@@ -1,19 +1,24 @@
 /**
  * \author Toximik
  * \file log.ts
- * \brief Logger page: read / edit / write / save the LOG_CONFIG area.
- *        Common editor logic in area.ts.
+ * \brief Logger page: read / edit / write / save the LOG_CONFIG area
+ *        (common editor logic in area.ts) and the logs on the board
+ *        (LogsPanel: list, download, erase).
  *
- * One control: the RC channel whose switch starts / stops a log session.
+ * One setting: the RC channel whose switch starts / stops a log session.
  */
 
 import { h } from "../dom.ts";
 import { cloneLog, decodeLog, encodeLog, sameLog, validateLog, type LogConfig, type LogField } from "../msp/log.ts";
+import type { MspClient } from "../msp/client.ts";
 import { MSP } from "../msp/protocol.ts";
 import { AreaView, channelOptions, type SaveTracker } from "./area.ts";
+import { LogsPanel } from "./logs.ts";
 import type { StatusSample } from "./status.ts";
 
 export class LogView extends AreaView<LogConfig, LogField> {
+  private readonly logs = new LogsPanel();
+
   constructor(saves: SaveTracker) {
     super(
       {
@@ -59,6 +64,22 @@ export class LogView extends AreaView<LogConfig, LogField> {
         ),
       ),
     );
+    this.root.append(this.logs.root);
+  }
+
+  override attach(client: MspClient): void {
+    super.attach(client);
+    this.logs.attach(client);
+  }
+
+  override detach(): void {
+    super.detach();
+    this.logs.detach();
+  }
+
+  override update(sample: StatusSample): void {
+    super.update(sample);
+    this.logs.update(sample);
   }
 
   protected fieldName(field: LogField): string {

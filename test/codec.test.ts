@@ -79,7 +79,7 @@ describe("stream parser", () => {
 
   it("rejects an oversized length as syntax error and resyncs", () => {
     const c = collect();
-    c.parser.push(Uint8Array.from([0x24, 0x58, 0x3e, 0, 0, 0x40, 0x01, 0x02, ...reply(3, [0, 2, 0])]));
+    c.parser.push(Uint8Array.from([0x24, 0x58, 0x3e, 0, 0, 0x40, 0x01, 0x10, ...reply(3, [0, 2, 0])])); // 4097 B
     expect(c.parser.counters.syntaxErrors).toBe(1);
     expect(c.frames.map((f) => f.id)).toEqual([3]);
   });
