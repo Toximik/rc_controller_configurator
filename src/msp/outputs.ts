@@ -62,8 +62,8 @@ export interface OutputsConfig {
 }
 
 export class AreaVersionError extends Error {
-  constructor(area: string, version: number, size: number) {
-    super(`${area} area version ${version} (${size} B) is not supported by this configurator (knows version ${OUTPUTS_VERSION}, ${OUTPUTS_SIZE} B) – update the configurator`);
+  constructor(area: string, version: number, size: number, knownVersion = OUTPUTS_VERSION, knownSize = OUTPUTS_SIZE) {
+    super(`${area} area version ${version} (${size} B) is not supported by this configurator (knows version ${knownVersion}, ${knownSize} B) – update the configurator`);
     this.name = "AreaVersionError";
   }
 }

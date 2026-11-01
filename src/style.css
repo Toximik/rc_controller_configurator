@@ -250,3 +250,15 @@ footer {
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
+
+/* Lights page */
+.fn-table td.center, .fn-table th.center { text-align: center; padding-left: 4px; padding-right: 4px; }
+.fn-table thead th[title] { cursor: help; text-decoration: underline dotted; text-underline-offset: 3px; }
+.fn-table .summary { color: var(--muted); font-size: 12px; white-space: normal; min-width: 160px; }
+.fn-table .light { margin: 0 auto; }
+.fn-table tr.unused > th .out-name { opacity: 0.6; }
+.fn-table tr.current > th { box-shadow: inset 3px 0 0 var(--ok); }
+.fn-table tr.current .out-name::after { content: " ◀ now"; color: var(--ok); font-size: 11px; font-weight: 400; }
+.live-val { color: var(--muted); font-variant-numeric: tabular-nums; }
+.live-val[data-tone="warn"] { color: var(--warn); }
+.lights-page > .notice, .lights-page fieldset > .notice { margin-bottom: 16px; }

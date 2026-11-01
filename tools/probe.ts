@@ -5,12 +5,15 @@
  *        against the board from Node, without a browser (macOS / Linux tty).
  *
  * usage: npm run probe -- /dev/cu.usbmodem1101 [seconds]
- *        npm run probe -- /dev/cu.usbmodem1101 outputs
+ *        npm run probe -- /dev/cu.usbmodem1101 outputs|lights
  *
  * "outputs": OUTPUTS area through the configurator's encoder / decoder:
  * read, write back unchanged, change OUT9 only when it has no source (no
  * pulses – nothing moves), invalid write refused + unchanged, original
  * restored. Nothing is saved.
+ *
+ * "lights": LIGHTS area the same way; the edit changes only a spare mode
+ * (beyond the modes in use) and the turn signal threshold (armed only).
  */
 
 import { execFileSync } from "node:child_process";
@@ -21,13 +24,14 @@ import { readIdentity } from "../src/msp/identity.ts";
 import { armBlockNames, decodeBattery, decodeOutputsLive, decodeRc, decodeStatus, OUTPUT_STATES } from "../src/msp/payloads.ts";
 import { MspErrorReply } from "../src/msp/client.ts";
 import { cloneOutputs, decodeOutputs, encodeOutputs, sameOutputs, validateOutputs, FAILSAFE_NAMES } from "../src/msp/outputs.ts";
+import { cloneLights, decodeLights, encodeLights, FN, functionNames, LIGHT_MODES, sameLights, validateLights } from "../src/msp/lights.ts";
 import { API_MINOR_KNOWN, MSP } from "../src/msp/protocol.ts";
 
 const path = process.argv[2];
-const mode = process.argv[3] === "outputs" ? "outputs" : "poll";
+const mode = process.argv[3] === "outputs" || process.argv[3] === "lights" ? process.argv[3] : "poll";
 const seconds = Number(mode === "poll" ? (process.argv[3] ?? "3") : "0");
 if (!path) {
-  console.log("usage: npm run probe -- /dev/cu.usbmodemXXXX [seconds | outputs]");
+  console.log("usage: npm run probe -- /dev/cu.usbmodemXXXX [seconds | outputs | lights]");
   process.exit(1);
 }
 
@@ -91,6 +95,53 @@ if (mode === "outputs") {
     check("original restored", sameOutputs(await read(), original));
   }
   console.log(ok ? "outputs: all checks passed" : "outputs: FAILED");
+  stream.destroy();
+  process.exit(ok ? 0 : 1);
+}
+
+if (mode === "lights") {
+  let ok = true;
+  const check = (what: string, pass: boolean) => {
+    ok &&= pass;
+    console.log(`${pass ? "ok  " : "FAIL"} ${what}`);
+  };
+  const read = async () => decodeLights(await client.request(MSP.LIGHTS));
+  const original = await read();
+  original.functions.forEach((f, i) => console.log(`  LIGHT${i + 1}: ${functionNames(f)}`));
+  original.modes.forEach((m, i) => console.log(`  mode ${i + 1}${i >= original.modeCount ? " (spare)" : ""}: ${functionNames(m)}`));
+  console.log(
+    `  mode channel ${original.modeChannel ? `CH${original.modeChannel}` : "none"}, ${original.modeCount} modes, steering ${original.steerChannel ? `CH${original.steerChannel}` : "none"}, ` +
+      `flags 0x${original.flags.toString(16)}, turn > ${original.steerThresholdUs} us, dead band ${original.throttleDeadbandUs} us`,
+  );
+  check("board config passes the configurator's validation", validateLights(original).length === 0);
+  try {
+    await client.request(MSP.SET_LIGHTS, encodeLights(original));
+    check("write back unchanged accepted", sameLights(await read(), original));
+
+    if (original.modeCount < LIGHT_MODES) {
+      const changed = cloneLights(original);
+      changed.modes[LIGHT_MODES - 1] = FN.ROCK | FN.BAR | FN.LEFT;
+      changed.steerThresholdUs = original.steerThresholdUs === 450 ? 449 : original.steerThresholdUs + 1;
+      await client.request(MSP.SET_LIGHTS, encodeLights(changed));
+      check(`spare mode ${LIGHT_MODES} + turn threshold edit written and read back`, sameLights(await read(), changed));
+    } else {
+      console.log("skip edit: all modes in use");
+    }
+
+    const invalid = cloneLights(original);
+    invalid.modes[LIGHT_MODES - 1] = FN.BRAKE;
+    const before = await read();
+    const code = await client.request(MSP.SET_LIGHTS, encodeLights(invalid)).then(
+      () => 0,
+      (e: unknown) => (e instanceof MspErrorReply ? e.code : -1),
+    );
+    check(`invalid (brake in a mode) refused with error 3 (got ${code})`, code === 3);
+    check("refused write left the board unchanged", sameLights(await read(), before));
+  } finally {
+    await client.request(MSP.SET_LIGHTS, encodeLights(original));
+    check("original restored", sameLights(await read(), original));
+  }
+  console.log(ok ? "lights: all checks passed" : "lights: FAILED");
   stream.destroy();
   process.exit(ok ? 0 : 1);
 }

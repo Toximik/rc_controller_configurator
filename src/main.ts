@@ -3,7 +3,7 @@
  * \file main.ts
  * \brief Configurator app: connect (port picker, identity / API check),
  *        status poll at 10 Hz, disconnect / board loss / auto reconnect,
- *        pages status and outputs (tabs = URL hash).
+ *        pages status, outputs and lights (tabs = URL hash).
  */
 
 import { byId, h, setText } from "./dom.ts";
@@ -14,6 +14,8 @@ import { decodeBattery, decodeOutputsLive, decodeRc, decodeStatus } from "./msp/
 import { API_MINOR_KNOWN, MSP } from "./msp/protocol.ts";
 import { STATUS_FLAG } from "./msp/payloads.ts";
 import { SerialLink, webSerialSupported } from "./serial.ts";
+import { SaveTracker } from "./ui/area.ts";
+import { LightsView } from "./ui/lights.ts";
 import { OutputsView } from "./ui/outputs.ts";
 import { StatusView } from "./ui/status.ts";
 
@@ -34,6 +36,7 @@ const ui = {
   tabs: byId("tabs"),
   status: byId("status"),
   outputs: byId("outputs"),
+  lights: byId("lights"),
   footer: byId("footer"),
 };
 
@@ -47,9 +50,13 @@ let rebootTimer: ReturnType<typeof setTimeout> | null = null;
 /** Board writes refused (armed): from the status poll */
 let boardLocked = false;
 let statusView: StatusView | null = null;
-const outputsView = new OutputsView();
+const saves = new SaveTracker();
+const outputsView = new OutputsView(saves);
+const lightsView = new LightsView(saves);
+const areaViews = [outputsView, lightsView];
+const hasUnsavedWork = () => areaViews.some((v) => v.hasUnsavedWork);
 
-const PAGES = ["status", "outputs"] as const;
+const PAGES = ["status", "outputs", "lights"] as const;
 type Page = (typeof PAGES)[number];
 
 function currentPage(): Page {
@@ -57,13 +64,14 @@ function currentPage(): Page {
   return (PAGES as readonly string[]).includes(p) ? (p as Page) : "status";
 }
 
-/** Tabs and pages visible only while connected (outputs also while lost: edits stay visible) */
+/** Tabs and pages visible only while connected (settings pages also while lost: edits stay visible) */
 function showPages(): void {
   const page = currentPage();
-  const on = state === "connected" || (state === "lost" && outputsView.hasUnsavedWork);
+  const on = state === "connected" || (state === "lost" && hasUnsavedWork());
   ui.tabs.hidden = !on;
   ui.status.hidden = !on || page !== "status" || state !== "connected";
   ui.outputs.hidden = !on || page !== "outputs";
+  ui.lights.hidden = !on || page !== "lights";
   for (const a of ui.tabs.querySelectorAll<HTMLAnchorElement>("a")) {
     a.toggleAttribute("aria-current", a.hash === `#${page}`);
   }
@@ -130,7 +138,7 @@ async function connect(port: SerialPort): Promise<void> {
     setState("connected");
     statusView ??= new StatusView();
     ui.status.replaceChildren(statusView.root);
-    outputsView.attach(client);
+    for (const v of areaViews) v.attach(client);
     showPages();
     void pollLoop(my, client);
   } catch (error) {
@@ -147,7 +155,8 @@ async function disconnect(): Promise<void> {
   session++;
   if (rebootTimer !== null) clearTimeout(rebootTimer);
   rebootTimer = null;
-  outputsView.detach();
+  saves.reset();
+  for (const v of areaViews) v.detach();
   client?.close();
   client = null;
   const l = link;
@@ -159,7 +168,8 @@ async function disconnect(): Promise<void> {
 function lost(my: number, reason: string): void {
   if (my !== session) return;
   session++;
-  outputsView.detach();
+  saves.reset();
+  for (const v of areaViews) v.detach();
   client?.close(reason);
   client = null;
   void link?.close();
@@ -195,7 +205,8 @@ async function pollLoop(my: number, c: MspClient): Promise<void> {
         ui.reboot.title = locked ? "Armed – the board refuses a reboot" : "Restart the board (refused while armed or saving)";
       }
       statusView?.update(sample);
-      outputsView.update(sample, t0);
+      saves.update(sample, t0);
+      for (const v of areaViews) v.update(sample);
       if (failures >= POLL_FAIL_LIMIT) notice("");
       failures = 0;
       polls++;
@@ -230,7 +241,7 @@ function samePort(info: SerialPortInfo, ref: SerialPortInfo | null): boolean {
 async function reboot(): Promise<void> {
   const c = client;
   if (!c) return;
-  const unsaved = outputsView.hasUnsavedWork
+  const unsaved = hasUnsavedWork()
     ? "\n\nValues written but not saved (or edits not written) are lost – the board starts with its saved settings."
     : "";
   if (!confirm(`Reboot the board?${unsaved}`)) return;
@@ -255,9 +266,10 @@ async function reboot(): Promise<void> {
 
 function init(): void {
   ui.outputs.replaceChildren(outputsView.root);
+  ui.lights.replaceChildren(lightsView.root);
   window.addEventListener("hashchange", showPages);
   window.addEventListener("beforeunload", (event) => {
-    if (outputsView.hasUnsavedWork) event.preventDefault();
+    if (hasUnsavedWork()) event.preventDefault();
   });
   setState("disconnected");
   if (!webSerialSupported()) {

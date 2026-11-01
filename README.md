@@ -4,7 +4,7 @@ Author: Toximik. Web configurator for the RC_Controller board: MSP v2 over Web S
 port (shared with the text CLI). Protocol, message set and decisions: firmware repo
 `../rc_controller_firmware/Docs/PHASE2_MSP_PLAN.md`.
 
-Status (2026-11-01, plan step 5): **connect, status, outputs page**. The lights page follows.
+Status (2026-11-01, plan step 5): **connect, status, outputs and lights pages**.
 
 ## Use
 
@@ -23,7 +23,7 @@ On connect the configurator checks the firmware variant (`RCCT`) and the API maj
 works (only appended fields / new messages). Then STATUS, RC, BATTERY and OUTPUTS_LIVE are polled together at
 10 Hz (one write, answered in one firmware task run). After a reboot or replug it reconnects by itself.
 
-Pages are tabs (URL hash `#status`, `#outputs`). **Reboot** (top bar, while connected) sends `REBOOT` after a
+Pages are tabs (URL hash `#status`, `#outputs`, `#lights`). **Reboot** (top bar, while connected) sends `REBOOT` after a
 confirmation (warns about written but unsaved values); the board refuses it while armed (button disabled) or
 saving, resets ~50 ms after the reply and the page reconnects by itself.
 
@@ -36,15 +36,24 @@ is disabled while the board is armed (the board refuses writes then anyway). Edi
 written but lost by a reboot before *Save* come back as edits. Leaving the page with edits or unsaved values
 asks first.
 
+**Lights:** the whole `LIGHTS_CONFIG` area with the same editor (Write / Save / lock / reconnect behaviour, rules =
+`LightConfig.hpp` `isValid()`): functions per output LIGHT1..8 (day, head, bar, tail, rock, brake, reverse, left,
+right), user defined modes 1..6 (steady functions; left + right = hazard; modes beyond "modes in use" are spare),
+mode input (channel, switch or momentary button, double press = hazard), steering channel / reverse / turn signal
+threshold, throttle reverse / direct reverse / dead band. Live: light on/off, current mode, mode and steering
+channel values, drive state, hazard, bench test notice. *Save* stores all areas, so a save from either page also
+clears the "written, not saved" state of the other.
+
 ## Commands
 
 | Command | |
 |---|---|
 | `npm run dev` | Dev server (localhost) |
 | `npm run build` | Typecheck + production build into `dist/` (relative paths, GitHub Pages ready) |
-| `npm test` | Unit tests (Vitest): codec with the firmware's frame vectors, payload decoders, outputs area + validation, client, connect handshake |
+| `npm test` | Unit tests (Vitest): codec with the firmware's frame vectors, payload decoders, outputs + lights areas + validation, client, connect handshake |
 | `npm run probe -- /dev/cu.usbmodem1101 [s]` | Same MSP client from Node against the board (handshake + status poll), no browser |
 | `npm run probe -- /dev/cu.usbmodem1101 outputs` | Outputs area through the configurator's codec: read, write back, OUT9 edit (only without a source – nothing moves), invalid write refused, original restored; nothing saved |
+| `npm run probe -- /dev/cu.usbmodem1101 lights` | Lights area the same way: edit of a spare mode + the turn signal threshold, brake in a mode refused; nothing saved |
 
 ## Structure
 
@@ -52,12 +61,14 @@ asks first.
 |---|---|
 | `src/msp/codec.ts` | CRC-8 DVB-S2, v2 encoder, stream parser (skips CLI text), LE reader / writer – twin of `AppMsp/MspCodec` |
 | `src/msp/outputs.ts` | Outputs area: model, decoder / encoder (version 1, 112 B), validation = `OutputConfig.hpp` |
+| `src/msp/lights.ts` | Lights area: model, decoder / encoder (version 2, 37 B), validation = `LightConfig.hpp` |
 | `src/msp/protocol.ts` | IDs, error codes, expected identity – mirrors `MspProtocol.hpp` |
 | `src/msp/payloads.ts` | Identity and live data decoders – layouts from `MspPayload.hpp` |
 | `src/msp/client.ts` | Request / reply matching, batching, timeouts (transport independent) |
 | `src/msp/identity.ts` | Connect handshake + compatibility check |
 | `src/serial.ts` | Web Serial transport (DTR on, read loop, loss detection) |
-| `src/ui/status.ts`, `src/ui/outputs.ts`, `src/main.ts` | Status and outputs pages, app / connection state, tabs |
+| `src/ui/area.ts` | Settings area editor (read / edit / validate / write / save, lock while armed) + shared save tracker |
+| `src/ui/status.ts`, `src/ui/outputs.ts`, `src/ui/lights.ts`, `src/main.ts` | Status, outputs and lights pages, app / connection state, tabs |
 
 Rules as in the firmware repo: new files `\author Toximik`, git identity `Toximik <info@tmcm.cz>`, no
 `Co-Authored-By`. Payload layouts change in the firmware first (host tests), then here with the same vectors.
