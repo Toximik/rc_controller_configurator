@@ -5,7 +5,7 @@
  *        against the board from Node, without a browser (macOS / Linux tty).
  *
  * usage: npm run probe -- /dev/cu.usbmodem1101 [seconds]
- *        npm run probe -- /dev/cu.usbmodem1101 outputs|lights|log
+ *        npm run probe -- /dev/cu.usbmodem1101 outputs|lights|log|beeper
  *
  * "outputs": OUTPUTS area through the configurator's encoder / decoder:
  * read, write back unchanged, change OUT9 only when it has no source (no
@@ -14,6 +14,9 @@
  *
  * "lights": LIGHTS area the same way; the edit changes only a spare mode
  * (beyond the modes in use) and the turn signal threshold (armed only).
+ *
+ * "beeper": BEEPER area the same way; the edit changes only the lost alarm
+ * delay (switch channel and flags stay as on the board - no sound).
  *
  * "logs [n] [out.zip]": logger info + session list, downloads session n
  * (default: the last) through the configurator's download + decoder, writes
@@ -30,16 +33,17 @@ import { MspErrorReply } from "../src/msp/client.ts";
 import { cloneOutputs, decodeOutputs, encodeOutputs, sameOutputs, validateOutputs, FAILSAFE_NAMES } from "../src/msp/outputs.ts";
 import { cloneLights, decodeLights, encodeLights, FN, functionNames, LIGHT_MODES, sameLights, validateLights } from "../src/msp/lights.ts";
 import { cloneLog, decodeLog, encodeLog, sameLog, validateLog } from "../src/msp/log.ts";
+import { cloneBeeper, decodeBeeper, encodeBeeper, sameBeeper, validateBeeper } from "../src/msp/beeper.ts";
 import { API_MINOR_KNOWN, MSP } from "../src/msp/protocol.ts";
 import { decodeSession } from "../src/msp/logformat.ts";
 import { downloadSession, LOGGER_STATES, readLogInfo, readLogSessions, sessionPages, sessionSeconds } from "../src/msp/logs.ts";
 import { makeZip } from "../src/zip.ts";
 
 const path = process.argv[2];
-const mode = ["outputs", "lights", "log", "logs"].includes(process.argv[3] ?? "") ? process.argv[3]! : "poll";
+const mode = ["outputs", "lights", "log", "logs", "beeper"].includes(process.argv[3] ?? "") ? process.argv[3]! : "poll";
 const seconds = Number(mode === "poll" ? (process.argv[3] ?? "3") : "0");
 if (!path) {
-  console.log("usage: npm run probe -- /dev/cu.usbmodemXXXX [seconds | outputs | lights | log | logs [n] [out.zip]]");
+  console.log("usage: npm run probe -- /dev/cu.usbmodemXXXX [seconds | outputs | lights | log | beeper | logs [n] [out.zip]]");
   process.exit(1);
 }
 
@@ -216,6 +220,52 @@ if (mode === "log") {
     check("original restored", sameLog(await read(), original));
   }
   console.log(ok ? "log: all checks passed" : "log: FAILED");
+  stream.destroy();
+  process.exit(ok ? 0 : 1);
+}
+
+if (mode === "beeper") {
+  // Codec check only: nothing is saved, the original is written back; only the delay is edited (no sound)
+  let ok = true;
+  const check = (what: string, pass: boolean) => {
+    ok &&= pass;
+    console.log(`${pass ? "ok  " : "FAIL"} ${what}`);
+  };
+  const read = async () => decodeBeeper(await client.request(MSP.BEEPER_CONFIG));
+  const original = await read();
+  console.log(
+    `  switch ${original.switchChannel ? `CH${original.switchChannel}` : "none"}, flags 0x${original.flags.toString(16)}, delay ${original.lostDelayS} s`,
+  );
+  check("board config passes the configurator's validation", validateBeeper(original).length === 0);
+  try {
+    await client.request(MSP.SET_BEEPER_CONFIG, encodeBeeper(original));
+    check("write back unchanged accepted", sameBeeper(await read(), original));
+
+    const changed = cloneBeeper(original);
+    changed.lostDelayS = original.lostDelayS === 3600 ? 3599 : original.lostDelayS + 1;
+    await client.request(MSP.SET_BEEPER_CONFIG, encodeBeeper(changed));
+    check(`delay ${changed.lostDelayS} s written and read back`, sameBeeper(await read(), changed));
+
+    for (const [what, edit] of [
+      ["channel 17", (c: typeof original) => (c.switchChannel = 17)],
+      ["flag bit 2", (c: typeof original) => (c.flags |= 0x04)],
+      ["delay 9 s", (c: typeof original) => (c.lostDelayS = 9)],
+    ] as const) {
+      const invalid = cloneBeeper(original);
+      edit(invalid);
+      const before = await read();
+      const code = await client.request(MSP.SET_BEEPER_CONFIG, encodeBeeper(invalid)).then(
+        () => 0,
+        (e: unknown) => (e instanceof MspErrorReply ? e.code : -1),
+      );
+      check(`invalid (${what}) refused with error 3 (got ${code})`, code === 3);
+      check("refused write left the board unchanged", sameBeeper(await read(), before));
+    }
+  } finally {
+    await client.request(MSP.SET_BEEPER_CONFIG, encodeBeeper(original));
+    check("original restored", sameBeeper(await read(), original));
+  }
+  console.log(ok ? "beeper: all checks passed" : "beeper: FAILED");
   stream.destroy();
   process.exit(ok ? 0 : 1);
 }

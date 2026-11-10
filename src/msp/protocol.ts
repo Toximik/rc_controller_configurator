@@ -25,6 +25,8 @@ export const MSP = {
   SET_LIGHTS: 0x4015,
   LOG_CONFIG: 0x4016,
   SET_LOG_CONFIG: 0x4017,
+  BEEPER_CONFIG: 0x401a,
+  SET_BEEPER_CONFIG: 0x401b,
 
   SAVE: 0x4020,
   DEFAULTS: 0x4021,
@@ -55,6 +57,8 @@ export const FC_VARIANT = "RCCT";
 /** API major this configurator speaks; a different major is refused at connect */
 export const API_MAJOR = 1;
 /** Highest API minor this configurator knows (newer minors only add messages / appended fields) */
-export const API_MINOR_KNOWN = 3;
+export const API_MINOR_KNOWN = 5;
 /** First API minor with the log download (LOG_INFO .. LOG_CONTROL) */
 export const API_MINOR_LOG_DOWNLOAD = 3;
+/** First API minor with the BEEPER_CONFIG area */
+export const API_MINOR_BEEPER = 5;

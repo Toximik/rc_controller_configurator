@@ -210,7 +210,7 @@ export class StatusView {
     f.settings.set(`${SETTINGS_STATES[s.settingsState] ?? s.settingsState}, layout ${s.settingsLayout}`, s.settingsState === 3 ? "ok" : "warn");
     f.lastSave.set(flag(STATUS_FLAG.SAVING) ? "saving…" : (SAVE_RESULTS[s.lastSave] ?? String(s.lastSave)), s.lastSave === 3 ? "bad" : "");
     f.lock.set(flag(STATUS_FLAG.LOCKED) ? "locked (armed)" : "unlocked", flag(STATUS_FLAG.LOCKED) ? "warn" : "");
-    const repaired = [s.repairedOutputs ? `outputs 0x${s.repairedOutputs.toString(16).padStart(4, "0")}` : "", flag(STATUS_FLAG.LIGHTS_REPAIRED) ? "lights" : "", flag(STATUS_FLAG.LOG_REPAIRED) ? "log" : ""].filter(Boolean);
+    const repaired = [s.repairedOutputs ? `outputs 0x${s.repairedOutputs.toString(16).padStart(4, "0")}` : "", flag(STATUS_FLAG.LIGHTS_REPAIRED) ? "lights" : "", flag(STATUS_FLAG.LOG_REPAIRED) ? "log" : "", flag(STATUS_FLAG.IMU_REPAIRED) ? "IMU" : "", flag(STATUS_FLAG.BEEPER_REPAIRED) ? "beeper" : ""].filter(Boolean);
     f.repaired.set(repaired.length ? `${repaired.join(", ")} → defaults` : "none", repaired.length ? "warn" : "");
   }
 }

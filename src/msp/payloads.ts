@@ -83,6 +83,9 @@ export const STATUS_FLAG = {
   LOCKED: 0x0040,
   LIGHTS_REPAIRED: 0x0080,
   LOG_REPAIRED: 0x0100,
+  IMU_REPAIRED: 0x0200,
+  IMU_RESTART: 0x0400,
+  BEEPER_REPAIRED: 0x0800,
 } as const;
 
 export const SETTINGS_STATES = ["no EDATA", "skipped", "defaults", "loaded"] as const;

@@ -11,11 +11,12 @@ import { MspClient, MspTimeout } from "./msp/client.ts";
 import { IncompatibleBoard, readIdentity, type Identity } from "./msp/identity.ts";
 import { MspErrorReply } from "./msp/client.ts";
 import { decodeBattery, decodeOutputsLive, decodeRc, decodeStatus } from "./msp/payloads.ts";
-import { API_MINOR_KNOWN, MSP } from "./msp/protocol.ts";
+import { API_MINOR_BEEPER, API_MINOR_KNOWN, MSP } from "./msp/protocol.ts";
 import { STATUS_FLAG } from "./msp/payloads.ts";
 import { SerialLink, webSerialSupported } from "./serial.ts";
 import { SaveTracker } from "./ui/area.ts";
 import { LightsView } from "./ui/lights.ts";
+import { BeeperView } from "./ui/beeper.ts";
 import { LogView } from "./ui/log.ts";
 import { OutputsView } from "./ui/outputs.ts";
 import { StatusView } from "./ui/status.ts";
@@ -40,6 +41,7 @@ const ui = {
   outputs: byId("outputs"),
   lights: byId("lights"),
   log: byId("log"),
+  beeper: byId("beeper"),
   footer: byId("footer"),
 };
 
@@ -57,10 +59,14 @@ const saves = new SaveTracker();
 const outputsView = new OutputsView(saves);
 const lightsView = new LightsView(saves);
 const logView = new LogView(saves);
-const areaViews = [outputsView, lightsView, logView];
+const beeperView = new BeeperView(saves);
+const beeperOld = h("section", { class: "card" }, h("h2", {}, "Beeper"), h("p", { class: "hint" }, "This firmware is too old for the beeper: it needs a newer firmware (API 1.5)."));
+beeperOld.hidden = true;
+let beeperSupported = false;
+const areaViews = [outputsView, lightsView, logView, beeperView];
 const hasUnsavedWork = () => areaViews.some((v) => v.hasUnsavedWork);
 
-const PAGES = ["status", "outputs", "lights", "log"] as const;
+const PAGES = ["status", "outputs", "lights", "log", "beeper"] as const;
 type Page = (typeof PAGES)[number];
 
 function currentPage(): Page {
@@ -78,6 +84,7 @@ function showPages(): void {
   ui.outputs.hidden = !on || page !== "outputs";
   ui.lights.hidden = !on || page !== "lights";
   ui.log.hidden = !on || page !== "log";
+  ui.beeper.hidden = !on || page !== "beeper";
   for (const a of ui.tabs.querySelectorAll<HTMLAnchorElement>("a")) {
     a.toggleAttribute("aria-current", a.hash === `#${page}`);
   }
@@ -145,7 +152,10 @@ async function connect(port: SerialPort): Promise<void> {
     setState("connected");
     statusView ??= new StatusView();
     ui.status.replaceChildren(statusView.root);
-    for (const v of areaViews) v.attach(client);
+    beeperSupported = id.api.minor >= API_MINOR_BEEPER;
+    beeperOld.hidden = beeperSupported;
+    beeperView.root.hidden = !beeperSupported;
+    for (const v of areaViews) if (v !== beeperView || beeperSupported) v.attach(client);
     showPages();
     void pollLoop(my, client);
   } catch (error) {
@@ -276,6 +286,7 @@ function init(): void {
   ui.outputs.replaceChildren(outputsView.root);
   ui.lights.replaceChildren(lightsView.root);
   ui.log.replaceChildren(logView.root);
+  ui.beeper.replaceChildren(beeperOld, beeperView.root);
   window.addEventListener("hashchange", showPages);
   window.addEventListener("beforeunload", (event) => {
     if (hasUnsavedWork()) event.preventDefault();
