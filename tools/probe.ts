@@ -248,7 +248,7 @@ if (mode === "beeper") {
 
     for (const [what, edit] of [
       ["channel 17", (c: typeof original) => (c.switchChannel = 17)],
-      ["flag bit 2", (c: typeof original) => (c.flags |= 0x04)],
+      ["flag bit 3", (c: typeof original) => (c.flags |= 0x08)],
       ["delay 9 s", (c: typeof original) => (c.lostDelayS = 9)],
     ] as const) {
       const invalid = cloneBeeper(original);

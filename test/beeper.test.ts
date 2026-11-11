@@ -9,14 +9,14 @@ import { describe, expect, it } from "vitest";
 import { BEEPER_SIZE, cloneBeeper, decodeBeeper, encodeBeeper, sameBeeper, validateBeeper, type BeeperConfig } from "../src/msp/beeper.ts";
 import { AreaVersionError } from "../src/msp/outputs.ts";
 
-/** Firmware default: CH7, link beep + lost alarm, 300 s */
-const DEFAULTS: BeeperConfig = { switchChannel: 7, flags: 0x03, lostDelayS: 300 };
+/** Firmware default: CH7, link beep + lost alarm + arm beep, 300 s */
+const DEFAULTS: BeeperConfig = { switchChannel: 7, flags: 0x07, lostDelayS: 300 };
 
 describe("BEEPER area", () => {
   it("default wire layout (version 1, 5 B, little-endian delay)", () => {
     const b = encodeBeeper(DEFAULTS);
     expect(b.length).toBe(BEEPER_SIZE);
-    expect(Array.from(b)).toEqual([1, 7, 3, 0x2c, 0x01]);
+    expect(Array.from(b)).toEqual([1, 7, 7, 0x2c, 0x01]);
   });
 
   it("round trip", () => {
@@ -54,7 +54,8 @@ describe("validation", () => {
   });
 
   it("unknown flag bits are refused", () => {
-    expect(ok({ flags: 0x04 })).toEqual(["linkBeep"]);
+    expect(ok({ flags: 0x08 })).toEqual(["linkBeep"]);
+    expect(ok({ flags: 0x04 })).toEqual([]);
     expect(ok({ flags: 0x83 })).toEqual(["linkBeep"]);
     expect(ok({ flags: -1 })).toEqual(["linkBeep"]);
     expect(ok({ flags: 0 })).toEqual([]);

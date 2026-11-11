@@ -6,7 +6,8 @@
  *
  * Layout version 1 (5 B), Application/AppMsp/MspPayload.hpp:
  * version, switch channel (0 = none, 1..16 = RC channel), flags
- * (bit 0 = link beep, bit 1 = lost alarm), lost delay in seconds (u16).
+ * (bit 0 = link beep, bit 1 = lost alarm, bit 2 = arm / disarm beep since
+ * API 1.6 - an older firmware refuses it), lost delay in seconds (u16).
  * The board checks again and answers "invalid value" (error 3) without
  * changing anything.
  */
@@ -24,7 +25,8 @@ export const BEEPER_DELAY_MAX_S = 3600;
 /** Flag bits */
 export const BEEPER_FLAG_LINK = 0x01;
 export const BEEPER_FLAG_LOST = 0x02;
-const BEEPER_FLAGS_MASK = BEEPER_FLAG_LINK | BEEPER_FLAG_LOST;
+export const BEEPER_FLAG_ARM = 0x04;
+const BEEPER_FLAGS_MASK = BEEPER_FLAG_LINK | BEEPER_FLAG_LOST | BEEPER_FLAG_ARM;
 
 export interface BeeperConfig {
   /** Beeper switch channel 1..16, 0 = none */
@@ -59,7 +61,7 @@ export function sameBeeper(a: BeeperConfig, b: BeeperConfig): boolean {
 }
 
 /** Field key of a validation problem / form control */
-export type BeeperField = "switchChannel" | "linkBeep" | "lostAlarm" | "lostDelayS";
+export type BeeperField = "switchChannel" | "linkBeep" | "lostAlarm" | "armBeep" | "lostDelayS";
 
 export interface BeeperProblem {
   field: BeeperField;
